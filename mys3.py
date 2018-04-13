@@ -47,17 +47,24 @@ EXPIRY_TEMPLATE = re.compile(r'expiry-date="(?P<expiry>.+)"')
 
 def get_glacier_metadata(client, bucket, key):
     response = client.head_object(Bucket=bucket, Key=key)
-    size, storage = response['ContentLength'], response['StorageClass']
-    if 'Restore' in response:
-        restore = response['Restore']
-        ongoing = ONGOING_TEMPLATE.search(restore).group('ongoing') == 'true'
-        if not ongoing:
-            expiry = parser.parse(EXPIRY_TEMPLATE.search(restore).group('expiry'))
-            return size, storage, ongoing, expiry
+    size = response['ContentLength']
+    if 'StorageClass' in response:
+        storage = response['StorageClass']
+        if 'Restore' in response:
+            restore = response['Restore']
+            ongoing = ONGOING_TEMPLATE.search(restore).group('ongoing') == 'true'
+            if not ongoing:
+                expiry = parser.parse(EXPIRY_TEMPLATE.search(restore).group('expiry'))
+                return size, storage, ongoing, expiry
+            else:
+                return size, storage, ongoing, None
         else:
-            return size, storage, ongoing, None
+            return size, storage, False, None
     else:
-        return size, storage, False, None
+        return size, 'STANDARD', False, None
+
+def get_object_size(client, bucket, key):
+    return client.head_object(Bucket=bucket, Key=key)['ContentLength']
 
 
 def _extract_fields_from_response(response, fields):
