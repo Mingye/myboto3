@@ -1,24 +1,24 @@
 import boto3, tempfile, re
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from dateutil import parser
 
 
 def assume_role(role):
     sts = boto3.client('sts')
-    role = sts.assume_role(RoleArn=role, RoleSessionName='assumed-role')
+    assumed_role = sts.assume_role(RoleArn=role, RoleSessionName='assumed-role')
     client = boto3.client(
         's3',
-        aws_access_key_id = role['Credentials']['AccessKeyId'],
-        aws_secret_access_key = role['Credentials']['SecretAccessKey'],
-        aws_session_token = role['Credentials']['SessionToken'],
+        aws_access_key_id = assumed_role['Credentials']['AccessKeyId'],
+        aws_secret_access_key = assumed_role['Credentials']['SecretAccessKey'],
+        aws_session_token = assumed_role['Credentials']['SessionToken'],
     )
-    client.expiration = role['Credentials']['Expiration']
+    client.renewal = assumed_role['Credentials']['Expiration'] - timedelta(minutes=5)
+    client.role = role
     return client
 
-def validate_role(client, role, timedelta):
-    difference = client.expiration - datetime.now(timezone.utc)
-    if difference < timedelta:
-        return assume_role(role)
+def validate_role(client):
+    if client.renewal < datetime.now(timezone.utc):
+        return assume_role(client.role)
     else:
         return client
 
@@ -33,12 +33,7 @@ def download_object(client, bucket, key, file, range_=None):
 
 def download_upload_object(client1, bucket1, key1, client2, bucket2, key2, range_=None):
     with tempfile.TemporaryFile() as tf:
-        if range_ is None:
-            response = client1.get_object(Bucket=bucket1, Key=key1)
-        else:
-            response = client1.get_object(Bucket=bucket1, Key=key1, Range=range_)
-        tf.write(response['Body'].read())
-        tf.seek(0)
+        download_object(client1, bucket1, key1, tf, range_)
         client2.upload_fileobj(tf, bucket2, key2)
 
 
