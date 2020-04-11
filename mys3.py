@@ -63,10 +63,13 @@ def get_object_size(client, bucket, key):
 
 
 def _extract_fields_from_response(response, fields):
-    return [tuple(content.get(field) for field in fields)
-            for content in response['Contents']]
+    if fields is None:
+        return [content.get('Key') for content in response['Contents']]
+    else:
+        return [tuple(content.get(field) for field in fields)
+                for content in response['Contents']]
 
-def list_objects(client, bucket, prefix, fields):
+def list_objects(client, bucket, prefix, fields=None):
     response = client.list_objects_v2(Bucket=bucket, Prefix=prefix)
     results = _extract_fields_from_response(response, fields)
     while response['IsTruncated']:
